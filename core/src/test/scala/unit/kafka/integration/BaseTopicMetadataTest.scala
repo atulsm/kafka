@@ -18,10 +18,9 @@
 package kafka.integration
 
 import java.io.File
-import java.nio.ByteBuffer
 
 import kafka.admin.AdminUtils
-import kafka.api.{TopicMetadataRequest, TopicMetadataResponse}
+import kafka.api.TopicMetadataResponse
 import kafka.client.ClientUtils
 import kafka.cluster.{Broker, BrokerEndPoint}
 import kafka.server.{KafkaConfig, KafkaServer, NotRunning}
@@ -61,23 +60,6 @@ abstract class BaseTopicMetadataTest extends ZooKeeperTestHarness {
   override def tearDown() {
     server1.shutdown()
     super.tearDown()
-  }
-
-  @Test
-  def testTopicMetadataRequest {
-    // create topic
-    val topic = "test"
-    AdminUtils.createTopic(zkUtils, topic, 1, 1)
-
-    // create a topic metadata request
-    val topicMetadataRequest = new TopicMetadataRequest(List(topic), 0)
-
-    val serializedMetadataRequest = ByteBuffer.allocate(topicMetadataRequest.sizeInBytes + 2)
-    topicMetadataRequest.writeTo(serializedMetadataRequest)
-    serializedMetadataRequest.rewind()
-    val deserializedMetadataRequest = TopicMetadataRequest.readFrom(serializedMetadataRequest)
-
-    assertEquals(topicMetadataRequest, deserializedMetadataRequest)
   }
 
   @Test
@@ -253,16 +235,18 @@ abstract class BaseTopicMetadataTest extends ZooKeeperTestHarness {
 
     // Assert that topic metadata at new brokers is updated correctly
     servers.filter(x => x.brokerState.currentState != NotRunning.state).foreach(x =>
-      waitUntilTrue(() =>
-        topicMetadata == ClientUtils.fetchTopicMetadata(
-          Set.empty,
-          Seq(new Broker(x.config.brokerId,
-            x.config.hostName,
-            x.boundPort()).getBrokerEndPoint(SecurityProtocol.PLAINTEXT)),
-          "TopicMetadataTest-testBasicTopicMetadata",
-          2000, 0), "Topic metadata is not correctly updated"))
+      waitUntilTrue(() => {
+          val foundMetadata = ClientUtils.fetchTopicMetadata(
+            Set.empty,
+            Seq(new Broker(x.config.brokerId,
+              x.config.hostName,
+              x.boundPort()).getBrokerEndPoint(SecurityProtocol.PLAINTEXT)),
+            "TopicMetadataTest-testBasicTopicMetadata", 2000, 0)
+          topicMetadata.brokers.sortBy(_.id) == foundMetadata.brokers.sortBy(_.id) &&
+            topicMetadata.topicsMetadata.sortBy(_.topic) == foundMetadata.topicsMetadata.sortBy(_.topic)
+        },
+        s"Topic metadata is not correctly updated"))
   }
-
 
   @Test
   def testAliveBrokerListWithNoTopics {

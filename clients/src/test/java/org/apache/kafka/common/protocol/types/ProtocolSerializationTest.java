@@ -38,6 +38,7 @@ public class ProtocolSerializationTest {
                                  new Field("int32", Type.INT32),
                                  new Field("int64", Type.INT64),
                                  new Field("string", Type.STRING),
+                                 new Field("nullable_string", Type.NULLABLE_STRING),
                                  new Field("bytes", Type.BYTES),
                                  new Field("nullable_bytes", Type.NULLABLE_BYTES),
                                  new Field("array", new ArrayOf(Type.INT32)),
@@ -47,6 +48,7 @@ public class ProtocolSerializationTest {
                                              .set("int32", 1)
                                              .set("int64", 1L)
                                              .set("string", "1")
+                                             .set("nullable_string", null)
                                              .set("bytes", ByteBuffer.wrap("1".getBytes()))
                                              .set("nullable_bytes", null)
                                              .set("array", new Object[] {1});
@@ -62,6 +64,9 @@ public class ProtocolSerializationTest {
         check(Type.STRING, "");
         check(Type.STRING, "hello");
         check(Type.STRING, "A\u00ea\u00f1\u00fcC");
+        check(Type.NULLABLE_STRING, null);
+        check(Type.NULLABLE_STRING, "");
+        check(Type.NULLABLE_STRING, "hello");
         check(Type.BYTES, ByteBuffer.allocate(0));
         check(Type.BYTES, ByteBuffer.wrap("abcd".getBytes()));
         check(Type.NULLABLE_BYTES, null);
@@ -99,16 +104,20 @@ public class ProtocolSerializationTest {
 
     @Test
     public void testNullableDefault() {
+        checkNullableDefault(Type.NULLABLE_BYTES, ByteBuffer.allocate(0));
+        checkNullableDefault(Type.NULLABLE_STRING, "default");
+    }
+
+    private void checkNullableDefault(Type type, Object defaultValue) {
         // Should use default even if the field allows null values
-        ByteBuffer empty = ByteBuffer.allocate(0);
-        Schema schema = new Schema(new Field("field", Type.NULLABLE_BYTES, "doc", empty));
+        Schema schema = new Schema(new Field("field", type, "doc", defaultValue));
         Struct struct = new Struct(schema);
-        assertEquals("Should get the default value", empty, struct.get("field"));
+        assertEquals("Should get the default value", defaultValue, struct.get("field"));
         struct.validate(); // should be valid even with missing value
     }
 
     @Test
-    public void testArray() {
+    public void testReadArraySizeTooLarge() {
         Type type = new ArrayOf(Type.INT8);
         int size = 10;
         ByteBuffer invalidBuffer = ByteBuffer.allocate(4 + size);
@@ -119,6 +128,97 @@ public class ProtocolSerializationTest {
         try {
             type.read(invalidBuffer);
             fail("Array size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+    }
+
+    @Test
+    public void testReadNegativeArraySize() {
+        Type type = new ArrayOf(Type.INT8);
+        int size = 10;
+        ByteBuffer invalidBuffer = ByteBuffer.allocate(4 + size);
+        invalidBuffer.putInt(-1);
+        for (int i = 0; i < size; i++)
+            invalidBuffer.put((byte) i);
+        invalidBuffer.rewind();
+        try {
+            type.read(invalidBuffer);
+            fail("Array size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+    }
+
+    @Test
+    public void testReadStringSizeTooLarge() {
+        byte[] stringBytes = "foo".getBytes();
+        ByteBuffer invalidBuffer = ByteBuffer.allocate(2 + stringBytes.length);
+        invalidBuffer.putShort((short) (stringBytes.length * 5));
+        invalidBuffer.put(stringBytes);
+        invalidBuffer.rewind();
+        try {
+            Type.STRING.read(invalidBuffer);
+            fail("String size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+        invalidBuffer.rewind();
+        try {
+            Type.NULLABLE_STRING.read(invalidBuffer);
+            fail("String size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+    }
+
+    @Test
+    public void testReadNegativeStringSize() {
+        byte[] stringBytes = "foo".getBytes();
+        ByteBuffer invalidBuffer = ByteBuffer.allocate(2 + stringBytes.length);
+        invalidBuffer.putShort((short) -1);
+        invalidBuffer.put(stringBytes);
+        invalidBuffer.rewind();
+        try {
+            Type.STRING.read(invalidBuffer);
+            fail("String size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+    }
+
+    @Test
+    public void testReadBytesSizeTooLarge() {
+        byte[] stringBytes = "foo".getBytes();
+        ByteBuffer invalidBuffer = ByteBuffer.allocate(4 + stringBytes.length);
+        invalidBuffer.putInt(stringBytes.length * 5);
+        invalidBuffer.put(stringBytes);
+        invalidBuffer.rewind();
+        try {
+            Type.BYTES.read(invalidBuffer);
+            fail("Bytes size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+        invalidBuffer.rewind();
+        try {
+            Type.NULLABLE_BYTES.read(invalidBuffer);
+            fail("Bytes size not validated");
+        } catch (SchemaException e) {
+            // Expected exception
+        }
+    }
+
+    @Test
+    public void testReadNegativeBytesSize() {
+        byte[] stringBytes = "foo".getBytes();
+        ByteBuffer invalidBuffer = ByteBuffer.allocate(4 + stringBytes.length);
+        invalidBuffer.putInt(-20);
+        invalidBuffer.put(stringBytes);
+        invalidBuffer.rewind();
+        try {
+            Type.BYTES.read(invalidBuffer);
+            fail("Bytes size not validated");
         } catch (SchemaException e) {
             // Expected exception
         }

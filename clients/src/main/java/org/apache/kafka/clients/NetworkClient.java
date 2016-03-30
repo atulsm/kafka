@@ -18,6 +18,7 @@ import org.apache.kafka.common.network.NetworkReceive;
 import org.apache.kafka.common.network.Selectable;
 import org.apache.kafka.common.network.Send;
 import org.apache.kafka.common.protocol.ApiKeys;
+import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.ProtoUtils;
 import org.apache.kafka.common.protocol.types.Struct;
 import org.apache.kafka.common.requests.MetadataRequest;
@@ -33,7 +34,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -54,14 +54,9 @@ public class NetworkClient implements KafkaClient {
     private final Selectable selector;
     
     private final MetadataUpdater metadataUpdater;
-    
-    /* a list of nodes we've connected to in the past */
-    private final List<Integer> nodesEverSeen;
-    private final Map<Integer, Node> nodesEverSeenById;
 
-    /* random offset into nodesEverSeen list */
     private final Random randOffset;
-    
+
     /* the state of each node's connection */
     private final ClusterConnectionStates connectionStates;
 
@@ -142,9 +137,6 @@ public class NetworkClient implements KafkaClient {
         this.correlation = 0;
         this.randOffset = new Random();
         this.requestTimeoutMs = requestTimeoutMs;
-        this.nodesEverSeen = new ArrayList<>();
-        this.nodesEverSeenById = new HashMap<>();
-        
         this.time = time;
     }
 
@@ -157,6 +149,9 @@ public class NetworkClient implements KafkaClient {
      */
     @Override
     public boolean ready(Node node, long now) {
+        if (node.isEmpty())
+            throw new IllegalArgumentException("Cannot connect to empty node " + node);
+
         if (isReady(node, now))
             return true;
 
@@ -374,19 +369,6 @@ public class NetworkClient implements KafkaClient {
                 found = node;
             }
         }
-
-        // if we found no node in the current list, try one from the nodes seen before
-        if (found == null && nodesEverSeen.size() > 0) {
-            offset = randOffset.nextInt(nodesEverSeen.size());
-            for (int i = 0; i < nodesEverSeen.size(); i++) {
-                int idx = (offset + i) % nodesEverSeen.size();
-                Node node = nodesEverSeenById.get(nodesEverSeen.get(idx));
-                log.debug("No node found. Trying previously-seen node with ID {}", node.id());
-                if (!this.connectionStates.isBlackedOut(node.idString(), now)) {
-                    found = node;
-                }
-            }
-        }
         
         return found;
     }
@@ -596,41 +578,19 @@ public class NetworkClient implements KafkaClient {
             this.metadata.requestUpdate();
         }
 
-        /*
-         * Keep track of any nodes we've ever seen. Add current
-         * alive nodes to this tracking list. 
-         * @param nodes Current alive nodes
-         */
-        private void updateNodesEverSeen(List<Node> nodes) {
-            for (Node n : nodes) {
-                Node existing = nodesEverSeenById.get(n.id());
-                if (existing == null) {
-                    nodesEverSeenById.put(n.id(), n);
-                    log.debug("Adding node {} to nodes ever seen", n.id());
-                    nodesEverSeen.add(n.id());
-                } else {
-                    // check if the nodes are really equal. There could be a case
-                    // where node.id() is the same but node has moved to different host
-                    if (!existing.equals(n)) {
-                        nodesEverSeenById.put(n.id(), n);
-                    }
-                }
-            }
-        }
-
         private void handleResponse(RequestHeader header, Struct body, long now) {
             this.metadataFetchInProgress = false;
             MetadataResponse response = new MetadataResponse(body);
             Cluster cluster = response.cluster();
             // check if any topics metadata failed to get updated
-            if (response.errors().size() > 0) {
-                log.warn("Error while fetching metadata with correlation id {} : {}", header.correlationId(), response.errors());
-            }
+            Map<String, Errors> errors = response.errors();
+            if (!errors.isEmpty())
+                log.warn("Error while fetching metadata with correlation id {} : {}", header.correlationId(), errors);
+
             // don't update the cluster if there are no valid nodes...the topic we want may still be in the process of being
             // created which means we will get errors and no nodes until it exists
             if (cluster.nodes().size() > 0) {
                 this.metadata.update(cluster, now);
-                this.updateNodesEverSeen(cluster.nodes());
             } else {
                 log.trace("Ignoring empty metadata response with correlation id {}.", header.correlationId());
                 this.metadata.failedUpdate(now);

@@ -17,7 +17,6 @@
 
 package kafka.network;
 
-
 import java.net._
 import javax.net.ssl._
 import java.io._
@@ -33,7 +32,6 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.requests.{ProduceRequest, RequestHeader}
 import org.apache.kafka.common.utils.SystemTime
 
-import kafka.producer.SyncProducerConfig
 import kafka.server.KafkaConfig
 import kafka.utils.TestUtils
 
@@ -103,9 +101,9 @@ class SocketServerTest extends JUnitSuite {
   private def producerRequestBytes: Array[Byte] = {
     val apiKey: Short = 0
     val correlationId = -1
-    val clientId = SyncProducerConfig.DefaultClientId
-    val ackTimeoutMs = SyncProducerConfig.DefaultAckTimeoutMs
-    val ack = SyncProducerConfig.DefaultRequiredAcks
+    val clientId = ""
+    val ackTimeoutMs = 10000
+    val ack = 0: Short
 
     val emptyHeader = new RequestHeader(apiKey, clientId, correlationId)
     val emptyRequest = new ProduceRequest(ack, ackTimeoutMs, new HashMap[TopicPartition, ByteBuffer]())
@@ -233,9 +231,9 @@ class SocketServerTest extends JUnitSuite {
   @Test
   def testSslSocketServer(): Unit = {
     val trustStoreFile = File.createTempFile("truststore", ".jks")
-    val overrideProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, enableSsl = true,
+    val overrideProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, interBrokerSecurityProtocol = Some(SecurityProtocol.SSL),
       trustStoreFile = Some(trustStoreFile))
-    overrideProps.put("listeners", "SSL://localhost:0")
+    overrideProps.put(KafkaConfig.ListenersProp, "SSL://localhost:0")
 
     val serverMetrics = new Metrics
     val overrideServer: SocketServer = new SocketServer(KafkaConfig.fromProps(overrideProps), serverMetrics, new SystemTime)
@@ -249,9 +247,9 @@ class SocketServerTest extends JUnitSuite {
 
       val apiKey = ApiKeys.PRODUCE.id
       val correlationId = -1
-      val clientId = SyncProducerConfig.DefaultClientId
-      val ackTimeoutMs = SyncProducerConfig.DefaultAckTimeoutMs
-      val ack = SyncProducerConfig.DefaultRequiredAcks
+      val clientId = ""
+      val ackTimeoutMs = 10000
+      val ack = 0: Short
       val emptyHeader = new RequestHeader(apiKey, clientId, correlationId)
       val emptyRequest = new ProduceRequest(ack, ackTimeoutMs, new HashMap[TopicPartition, ByteBuffer]())
 

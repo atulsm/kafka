@@ -17,48 +17,45 @@
 
 package org.apache.kafka.streams.processor;
 
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.annotation.InterfaceStability;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.StreamsMetrics;
 
 import java.io.File;
 
+/**
+ * Processor context interface.
+ */
+@InterfaceStability.Unstable
 public interface ProcessorContext {
+
+    /**
+     * Returns the application id
+     *
+     * @return the application id
+     */
+    String applicationId();
 
     /**
      * Returns the task id
      *
      * @return the task id
      */
-    TaskId id();
+    TaskId taskId();
 
     /**
-     * Returns the key serializer
+     * Returns the default key serde
      *
      * @return the key serializer
      */
-    Serializer<?> keySerializer();
+    Serde<?> keySerde();
 
     /**
-     * Returns the value serializer
+     * Returns the default value serde
      *
      * @return the value serializer
      */
-    Serializer<?> valueSerializer();
-
-    /**
-     * Returns the key deserializer
-     *
-     * @return the key deserializer
-     */
-    Deserializer<?> keyDeserializer();
-
-    /**
-     * Returns the value deserializer
-     *
-     * @return the value deserializer
-     */
-    Deserializer<?> valueDeserializer();
+    Serde<?> valueSerde();
 
     /**
      * Returns the state directory for the partition.
@@ -81,21 +78,68 @@ public interface ProcessorContext {
      */
     void register(StateStore store, boolean loggingEnabled, StateRestoreCallback stateRestoreCallback);
 
+    /**
+     * Get the state store given the store name.
+     *
+     * @param name The store name
+     * @return The state store instance
+     */
     StateStore getStateStore(String name);
 
+    /**
+     * Schedules a periodic operation for processors. A processor may call this method during
+     * {@link Processor#init(ProcessorContext) initialization} to
+     * schedule a periodic call called a punctuation to {@link Processor#punctuate(long)}.
+     *
+     * @param interval the time interval between punctuations
+     */
     void schedule(long interval);
 
+    /**
+     * Forwards a key/value pair to the downstream processors
+     * @param key key
+     * @param value value
+     */
     <K, V> void forward(K key, V value);
 
+    /**
+     * Forwards a key/value pair to one of the downstream processors designated by childIndex
+     * @param key key
+     * @param value value
+     */
     <K, V> void forward(K key, V value, int childIndex);
 
+    /**
+     * Requests a commit
+     */
     void commit();
 
+    /**
+     * Returns the topic name of the current input record
+     *
+     * @return the topic name
+     */
     String topic();
 
+    /**
+     * Returns the partition id of the current input record
+     *
+     * @return the partition id
+     */
     int partition();
 
+    /**
+     * Returns the offset of the current input record
+     *
+     * @return the offset
+     */
     long offset();
 
+    /**
+     * Returns the timestamp of the current input record. The timestamp is extracted from
+     * {@link org.apache.kafka.clients.consumer.ConsumerRecord ConsumerRecord} by {@link TimestampExtractor}.
+     *
+     * @return the timestamp
+     */
     long timestamp();
 }

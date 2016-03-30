@@ -18,6 +18,7 @@
 package org.apache.kafka.streams.processor.internals;
 
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.ProcessorStateException;
@@ -36,6 +37,7 @@ import java.util.Set;
 
 public abstract class AbstractTask {
     protected final TaskId id;
+    protected final String applicationId;
     protected final ProcessorTopology topology;
     protected final Consumer consumer;
     protected final ProcessorStateManager stateMgr;
@@ -43,7 +45,7 @@ public abstract class AbstractTask {
     protected ProcessorContext processorContext;
 
     protected AbstractTask(TaskId id,
-                           String jobId,
+                           String applicationId,
                            Collection<TopicPartition> partitions,
                            ProcessorTopology topology,
                            Consumer<byte[], byte[]> consumer,
@@ -51,30 +53,38 @@ public abstract class AbstractTask {
                            StreamsConfig config,
                            boolean isStandby) {
         this.id = id;
+        this.applicationId = applicationId;
         this.partitions = new HashSet<>(partitions);
         this.topology = topology;
         this.consumer = consumer;
 
         // create the processor state manager
         try {
-            File jobStateDir = StreamThread.makeStateDir(jobId, config.getString(StreamsConfig.STATE_DIR_CONFIG));
-            File stateFile = new File(jobStateDir.getCanonicalPath(), id.toString());
+            File applicationStateDir = StreamThread.makeStateDir(applicationId, config.getString(StreamsConfig.STATE_DIR_CONFIG));
+            File stateFile = new File(applicationStateDir.getCanonicalPath(), id.toString());
             // if partitions is null, this is a standby task
-            this.stateMgr = new ProcessorStateManager(jobId, id.partition, partitions, stateFile, restoreConsumer, isStandby);
+            this.stateMgr = new ProcessorStateManager(applicationId, id.partition, partitions, stateFile, restoreConsumer, isStandby);
         } catch (IOException e) {
             throw new ProcessorStateException("Error while creating the state manager", e);
         }
     }
 
     protected void initializeStateStores() {
+        // set initial offset limits
+        initializeOffsetLimits();
+
         for (StateStoreSupplier stateStoreSupplier : this.topology.stateStoreSuppliers()) {
             StateStore store = stateStoreSupplier.get();
-            store.init(this.processorContext);
+            store.init(this.processorContext, store);
         }
     }
 
     public final TaskId id() {
         return id;
+    }
+
+    public final String applicationId() {
+        return applicationId;
     }
 
     public final Set<TopicPartition> partitions() {
@@ -101,6 +111,13 @@ public abstract class AbstractTask {
 
     protected Map<TopicPartition, Long> recordCollectorOffsets() {
         return Collections.emptyMap();
+    }
+
+    protected void initializeOffsetLimits() {
+        for (TopicPartition partition : partitions) {
+            OffsetAndMetadata metadata = consumer.committed(partition); // TODO: batch API?
+            stateMgr.putOffsetLimit(partition, metadata != null ? metadata.offset() : 0L);
+        }
     }
 
 }

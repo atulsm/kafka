@@ -19,7 +19,6 @@ package kafka.utils
 
 import java.io._
 import java.nio._
-import charset.Charset
 import java.nio.channels._
 import java.util.concurrent.locks.{ReadWriteLock, Lock}
 import java.lang.management._
@@ -29,10 +28,7 @@ import org.apache.kafka.common.protocol.SecurityProtocol
 
 import scala.collection._
 import scala.collection.mutable
-import java.util.Properties
 import kafka.cluster.EndPoint
-import kafka.common.KafkaException
-import kafka.common.KafkaStorageException
 import org.apache.kafka.common.utils.Crc32
 import org.apache.kafka.common.utils.Utils
 
@@ -83,35 +79,10 @@ object CoreUtils extends Logging {
   }
 
   /**
-   * Recursively delete the given file/directory and any subfiles (if any exist)
-   * @param file The root file at which to begin deleting
-   */
-  def rm(file: String): Unit = rm(new File(file))
-
-  /**
    * Recursively delete the list of files/directories and any subfiles (if any exist)
    * @param files sequence of files to be deleted
    */
-  def rm(files: Seq[String]): Unit = files.foreach(f => rm(new File(f)))
-
-  /**
-   * Recursively delete the given file/directory and any subfiles (if any exist)
-   * @param file The root file at which to begin deleting
-   */
-  def rm(file: File) {
-	  if(file == null) {
-	    return
-	  } else if(file.isDirectory) {
-	    val files = file.listFiles()
-	    if(files != null) {
-	      for(f <- files)
-	        rm(f)
-	    }
-	    file.delete()
-	  } else {
-	    file.delete()
-	  }
-  }
+  def delete(files: Seq[String]): Unit = files.foreach(f => Utils.delete(new File(f)))
 
   /**
    * Register the given mbean with the platform mbean server,

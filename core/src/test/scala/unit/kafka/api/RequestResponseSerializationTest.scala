@@ -17,7 +17,7 @@
 
 package kafka.api
 
-import kafka.cluster.{BrokerEndPoint, EndPoint, Broker}
+import kafka.cluster.{EndPoint, Broker}
 import kafka.common.{OffsetAndMetadata, OffsetMetadataAndError}
 import kafka.common._
 import kafka.message.{Message, ByteBufferMessageSet}
@@ -145,14 +145,6 @@ object SerializationTestUtils {
     )
   }
 
-  def createTestTopicMetadataRequest: TopicMetadataRequest = {
-    new TopicMetadataRequest(1, 1, "client 1", Seq(topic1, topic2))
-  }
-
-  def createTestTopicMetadataResponse: TopicMetadataResponse = {
-    new TopicMetadataResponse(brokers.map(_.getBrokerEndPoint(SecurityProtocol.PLAINTEXT)).toSeq, Seq(topicmetaData1, topicmetaData2), 1)
-  }
-
   def createTestOffsetCommitRequestV2: OffsetCommitRequest = {
     new OffsetCommitRequest(
       groupId = "group 1",
@@ -209,22 +201,6 @@ object SerializationTestUtils {
   def createConsumerMetadataResponse: GroupCoordinatorResponse = {
     GroupCoordinatorResponse(Some(brokers.head.getBrokerEndPoint(SecurityProtocol.PLAINTEXT)), Errors.NONE.code, 0)
   }
-
-  def createUpdateMetadataRequest(versionId: Short): UpdateMetadataRequest = {
-    UpdateMetadataRequest(
-      versionId,
-      correlationId = 0,
-      clientId = "client1",
-      controllerId = 0,
-      controllerEpoch = 0,
-      partitionStateInfos = updateMetadataRequestPartitionStateInfo,
-      brokers.toSet
-    )
-  }
-
-  def createUpdateMetadataResponse: UpdateMetadataResponse = {
-    UpdateMetadataResponse( correlationId = 0, errorCode = 0)
-  }
 }
 
 class RequestResponseSerializationTest extends JUnitSuite {
@@ -233,8 +209,6 @@ class RequestResponseSerializationTest extends JUnitSuite {
   private val fetchRequest = SerializationTestUtils.createTestFetchRequest
   private val offsetRequest = SerializationTestUtils.createTestOffsetRequest
   private val offsetResponse = SerializationTestUtils.createTestOffsetResponse
-  private val topicMetadataRequest = SerializationTestUtils.createTestTopicMetadataRequest
-  private val topicMetadataResponse = SerializationTestUtils.createTestTopicMetadataResponse
   private val offsetCommitRequestV0 = SerializationTestUtils.createTestOffsetCommitRequestV0
   private val offsetCommitRequestV1 = SerializationTestUtils.createTestOffsetCommitRequestV1
   private val offsetCommitRequestV2 = SerializationTestUtils.createTestOffsetCommitRequestV2
@@ -244,22 +218,16 @@ class RequestResponseSerializationTest extends JUnitSuite {
   private val consumerMetadataRequest = SerializationTestUtils.createConsumerMetadataRequest
   private val consumerMetadataResponse = SerializationTestUtils.createConsumerMetadataResponse
   private val consumerMetadataResponseNoCoordinator = GroupCoordinatorResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode, 0)
-  private val updateMetadataRequestV0 = SerializationTestUtils.createUpdateMetadataRequest(0)
-  private val updateMetadataRequestV1 = SerializationTestUtils.createUpdateMetadataRequest(1)
-  private val updateMetdataResponse = SerializationTestUtils.createUpdateMetadataResponse
-
 
   @Test
   def testSerializationAndDeserialization() {
 
     val requestsAndResponses =
       collection.immutable.Seq(producerRequest, producerResponse,
-                               fetchRequest, offsetRequest, offsetResponse, topicMetadataRequest,
-                               topicMetadataResponse,
+                               fetchRequest, offsetRequest, offsetResponse,
                                offsetCommitRequestV0, offsetCommitRequestV1, offsetCommitRequestV2,
                                offsetCommitResponse, offsetFetchRequest, offsetFetchResponse,
                                consumerMetadataRequest, consumerMetadataResponse,
-                               updateMetadataRequestV0, updateMetadataRequestV1, updateMetdataResponse,
                                consumerMetadataResponseNoCoordinator)
 
     requestsAndResponses.foreach { original =>
@@ -308,4 +276,5 @@ class RequestResponseSerializationTest extends JUnitSuite {
     // new response should have 4 bytes more than the old response since delayTime is an INT32
     assertEquals(oldClientResponse.sizeInBytes + 4, newClientResponse.sizeInBytes)
   }
+
 }

@@ -22,6 +22,8 @@ VAGRANTFILE_API_VERSION = "2"
 
 # General config
 enable_dns = false
+# Override to false when bringing up a cluster on AWS
+enable_hostmanager = true
 enable_jmx = false
 num_zookeepers = 1
 num_brokers = 3
@@ -53,27 +55,9 @@ if File.exists?(local_config_file) then
   eval(File.read(local_config_file), binding, "Vagrantfile.local")
 end
 
-# This is a horrible hack to work around bad interactions between
-# vagrant-hostmanager and vagrant-aws/vagrant's implementation. Hostmanager
-# wants to update the /etc/hosts entries, but tries to do so even on nodes that
-# aren't up (e.g. even when all nodes are stopped and you run vagrant
-# destroy). Because of the way the underlying code in vagrant works, it still
-# tries to communicate with the node and has to wait for a very long
-# timeout. This modifies the update to check for hosts that are not created or
-# stopped, skipping the update in that case since it's impossible to update
-# nodes in that state.
-Object.const_get("VagrantPlugins").const_get("HostManager").const_get("HostsFile").class_eval do
-  def update_guest(machine)
-    state_id = machine.state.id
-    return if state_id == :not_created || state_id == :stopped
-    old_update_guest(machine)
-  end
-  alias_method :old_update_guest, :update_guest
-end
-
 # TODO(ksweeney): RAM requirements are not empirical and can probably be significantly lowered.
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-  config.hostmanager.enabled = true
+  config.hostmanager.enabled = enable_hostmanager
   config.hostmanager.manage_host = enable_dns
   config.hostmanager.include_offline = false
 

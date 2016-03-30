@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,7 +51,7 @@ public final class Cluster {
         this.nodes = Collections.unmodifiableList(copy);
         
         this.nodesById = new HashMap<>();
-        for (Node node: nodes)
+        for (Node node : nodes)
             this.nodesById.put(node.id(), node);
 
         // index the partitions by topic/partition for quick lookup
@@ -110,11 +111,20 @@ public final class Cluster {
      * @return A cluster for these hosts/ports
      */
     public static Cluster bootstrap(List<InetSocketAddress> addresses) {
-        List<Node> nodes = new ArrayList<Node>();
+        List<Node> nodes = new ArrayList<>();
         int nodeId = -1;
         for (InetSocketAddress address : addresses)
-            nodes.add(new Node(nodeId--, address.getHostName(), address.getPort()));
+            nodes.add(new Node(nodeId--, address.getHostString(), address.getPort()));
         return new Cluster(nodes, new ArrayList<PartitionInfo>(0), Collections.<String>emptySet());
+    }
+
+    /**
+     * Return a copy of this cluster combined with `partitions`.
+     */
+    public Cluster withPartitions(Map<TopicPartition, PartitionInfo> partitions) {
+        Map<TopicPartition, PartitionInfo> combinedPartitions = new HashMap<>(this.partitionsByTopicPartition);
+        combinedPartitions.putAll(partitions);
+        return new Cluster(this.nodes, combinedPartitions.values(), new HashSet<>(this.unauthorizedTopics));
     }
 
     /**

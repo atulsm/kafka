@@ -43,11 +43,22 @@ public class ConsumerConfig extends AbstractConfig {
     public static final String GROUP_ID_CONFIG = "group.id";
     private static final String GROUP_ID_DOC = "A unique string that identifies the consumer group this consumer belongs to. This property is required if the consumer uses either the group management functionality by using <code>subscribe(topic)</code> or the Kafka-based offset management strategy.";
 
+    /** <code>max.poll.records</code> */
+    public static final String MAX_POLL_RECORDS_CONFIG = "max.poll.records";
+    private static final String MAX_POLL_RECORDS_DOC = "The maximum number of records returned in a single call to poll().";
+
     /**
      * <code>session.timeout.ms</code>
      */
     public static final String SESSION_TIMEOUT_MS_CONFIG = "session.timeout.ms";
-    private static final String SESSION_TIMEOUT_MS_DOC = "The timeout used to detect failures when using Kafka's group management facilities.";
+    private static final String SESSION_TIMEOUT_MS_DOC = "The timeout used to detect failures when using Kafka's " +
+            "group management facilities. When a consumer's heartbeat is not received within the session timeout, " +
+            "the broker will mark the consumer as failed and rebalance the group. Since heartbeats are sent only " +
+            "when poll() is invoked, a higher session timeout allows more time for message processing in the consumer's " +
+            "poll loop at the cost of a longer time to detect hard failures. See also <code>" + MAX_POLL_RECORDS_CONFIG + "</code> for " +
+            "another option to control the processing time in the poll loop. Note that the value must be in the " +
+            "allowable range as configured in the broker configuration by <code>group.min.session.timeout.ms</code> " +
+            "and <code>group.max.session.timeout.ms</code>.";
 
     /**
      * <code>heartbeat.interval.ms</code>
@@ -82,7 +93,7 @@ public class ConsumerConfig extends AbstractConfig {
      * <code>auto.offset.reset</code>
      */
     public static final String AUTO_OFFSET_RESET_CONFIG = "auto.offset.reset";
-    private static final String AUTO_OFFSET_RESET_DOC = "What to do when there is no initial offset in Kafka or if the current offset does not exist any more on the server (e.g. because that data has been deleted): <ul><li>earliest: automatically reset the offset to the earliest offset<li>latest: automatically reset the offset to the latest offset</li><li>none: throw exception to the consumer if no previous offset is found for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
+    public static final String AUTO_OFFSET_RESET_DOC = "What to do when there is no initial offset in Kafka or if the current offset does not exist any more on the server (e.g. because that data has been deleted): <ul><li>earliest: automatically reset the offset to the earliest offset<li>latest: automatically reset the offset to the latest offset</li><li>none: throw exception to the consumer if no previous offset is found for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
 
     /**
      * <code>fetch.min.bytes</code>
@@ -162,7 +173,19 @@ public class ConsumerConfig extends AbstractConfig {
     public static final String REQUEST_TIMEOUT_MS_CONFIG = CommonClientConfigs.REQUEST_TIMEOUT_MS_CONFIG;
     private static final String REQUEST_TIMEOUT_MS_DOC = CommonClientConfigs.REQUEST_TIMEOUT_MS_DOC;
 
+    /** <code>interceptor.classes</code> */
+    public static final String INTERCEPTOR_CLASSES_CONFIG = "interceptor.classes";
+    public static final String INTERCEPTOR_CLASSES_DOC = "A list of classes to use as interceptors. "
+                                                        + "Implementing the <code>ConsumerInterceptor</code> interface allows you to intercept (and possibly mutate) records "
+                                                        + "received by the consumer. By default, there are no interceptors.";
 
+
+    /** <code>exclude.internal.topics</code> */
+    public static final String EXCLUDE_INTERNAL_TOPICS_CONFIG = "exclude.internal.topics";
+    private static final String EXCLUDE_INTERNAL_TOPICS_DOC = "Whether records from internal topics (such as offsets) should be exposed to the consumer. "
+                                                            + "If set to <code>true</code> the only way to receive records from an internal topic is subscribing to it.";
+    public static final boolean EXCLUDE_INTERNAL_TOPICS_DEFAULT = true;
+    
     static {
         CONFIG = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG,
                                         Type.LIST,
@@ -220,13 +243,13 @@ public class ConsumerConfig extends AbstractConfig {
                                         CommonClientConfigs.SEND_BUFFER_DOC)
                                 .define(RECEIVE_BUFFER_CONFIG,
                                         Type.INT,
-                                        32 * 1024,
+                                        64 * 1024,
                                         atLeast(0),
                                         Importance.MEDIUM,
                                         CommonClientConfigs.RECEIVE_BUFFER_DOC)
                                 .define(FETCH_MIN_BYTES_CONFIG,
                                         Type.INT,
-                                        1024,
+                                        1,
                                         atLeast(0),
                                         Importance.HIGH,
                                         FETCH_MIN_BYTES_DOC)
@@ -296,6 +319,22 @@ public class ConsumerConfig extends AbstractConfig {
                                         9 * 60 * 1000,
                                         Importance.MEDIUM,
                                         CommonClientConfigs.CONNECTIONS_MAX_IDLE_MS_DOC)
+                                .define(INTERCEPTOR_CLASSES_CONFIG,
+                                        Type.LIST,
+                                        null,
+                                        Importance.LOW,
+                                        INTERCEPTOR_CLASSES_DOC)
+                                .define(MAX_POLL_RECORDS_CONFIG,
+                                        Type.INT,
+                                        Integer.MAX_VALUE,
+                                        atLeast(1),
+                                        Importance.MEDIUM,
+                                        MAX_POLL_RECORDS_DOC)
+                                .define(EXCLUDE_INTERNAL_TOPICS_CONFIG,
+                                        Type.BOOLEAN,
+                                        EXCLUDE_INTERNAL_TOPICS_DEFAULT,
+                                        Importance.MEDIUM,
+                                        EXCLUDE_INTERNAL_TOPICS_DOC)
 
                                 // security support
                                 .define(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,

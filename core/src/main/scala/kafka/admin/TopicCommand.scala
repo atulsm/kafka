@@ -17,21 +17,21 @@
 
 package kafka.admin
 
-import joptsimple._
 import java.util.Properties
-import kafka.common.{TopicExistsException, Topic, AdminCommandFailedException}
-import kafka.utils.CommandLineUtils
-import kafka.utils._
-import kafka.utils.ZkUtils._
-import org.I0Itec.zkclient.exception.ZkNodeExistsException
-import scala.collection._
-import scala.collection.JavaConversions._
-import kafka.log.{Defaults, LogConfig}
+import joptsimple._
+import kafka.common.{AdminCommandFailedException, Topic, TopicExistsException}
 import kafka.consumer.{ConsumerConfig, Whitelist}
-import kafka.server.ConfigType
-import org.apache.kafka.common.utils.Utils
-import org.apache.kafka.common.security.JaasUtils
 import kafka.coordinator.GroupCoordinator
+import kafka.log.{Defaults, LogConfig}
+import kafka.server.ConfigType
+import kafka.utils.ZkUtils._
+import kafka.utils._
+import org.I0Itec.zkclient.exception.ZkNodeExistsException
+import org.apache.kafka.common.security.JaasUtils
+import org.apache.kafka.common.utils.Utils
+import scala.collection.JavaConversions._
+import scala.collection._
+import org.apache.kafka.common.internals.TopicConstants
 
 
 object TopicCommand extends Logging {
@@ -104,7 +104,9 @@ object TopicCommand extends Logging {
         val partitions = opts.options.valueOf(opts.partitionsOpt).intValue
         val replicas = opts.options.valueOf(opts.replicationFactorOpt).intValue
         warnOnMaxMessagesChange(configs, replicas)
-        AdminUtils.createTopic(zkUtils, topic, partitions, replicas, configs)
+        val rackAwareMode = if (opts.options.has(opts.disableRackAware)) RackAwareMode.Disabled
+                            else RackAwareMode.Enforced
+        AdminUtils.createTopic(zkUtils, topic, partitions, replicas, configs, rackAwareMode)
       }
       println("Created topic \"%s\".".format(topic))
     } catch  {
@@ -135,7 +137,7 @@ object TopicCommand extends Logging {
       }
 
       if(opts.options.has(opts.partitionsOpt)) {
-        if (topic == GroupCoordinator.GroupMetadataTopicName) {
+        if (topic == TopicConstants.GROUP_METADATA_TOPIC_NAME) {
           throw new IllegalArgumentException("The number of partitions for the offsets topic cannot be changed.")
         }
         println("WARNING: If partitions are increased for a topic that has a key, the partition " +
@@ -168,7 +170,7 @@ object TopicCommand extends Logging {
     }
     topics.foreach { topic =>
       try {
-        if (Topic.InternalTopics.contains(topic)) {
+        if (TopicConstants.INTERNAL_TOPICS.contains(topic)) {
           throw new AdminOperationException("Topic %s is a kafka internal topic and is not allowed to be marked for deletion.".format(topic))
         } else {
           zkUtils.createPersistentPath(getDeleteTopicPath(topic))
@@ -235,6 +237,10 @@ object TopicCommand extends Logging {
     val props = new Properties
     configsToBeAdded.foreach(pair => props.setProperty(pair(0).trim, pair(1).trim))
     LogConfig.validate(props)
+    if (props.containsKey(LogConfig.MessageFormatVersionProp)) {
+      println(s"WARNING: The configuration ${LogConfig.MessageFormatVersionProp}=${props.getProperty(LogConfig.MessageFormatVersionProp)} is specified. " +
+      s"This configuration will be ignored if the version is newer than the inter.broker.protocol.version specified in the broker.")
+    }
     props
   }
 
@@ -319,6 +325,7 @@ object TopicCommand extends Logging {
     val ifNotExistsOpt = parser.accepts("if-not-exists",
                                         "if set when creating topics, the action will only execute if the topic does not already exist")
 
+    val disableRackAware = parser.accepts("disable-rack-aware", "Disable rack aware replica assignment")
     val options = parser.parse(args : _*)
 
     val allTopicLevelOpts: Set[OptionSpec[_]] = Set(alterOpt, createOpt, describeOpt, listOpt, deleteOpt)
